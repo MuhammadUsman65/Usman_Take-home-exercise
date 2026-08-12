@@ -63,7 +63,7 @@
 - **Decision:** `customers.json` splits each customer into `safe` and `restricted`. Every
   function that talks to the LLM does not have access to the restricted fields
 
-- **Alternatives considered:**
+**Alternatives considered:**
 - Pass the full customer record to the model and instruct it not to repeat restricted
   fields. Rejected. This makes safety dependent on the model following an instruction
   correctly, every time, under any phrasing of the question, including adversarial
@@ -84,7 +84,7 @@
   keyword list (cnic, iban, card number, cvv, etc.) and short-circuits straight to a refusal
   and a human-escalation flag, before `classify()` is ever called.
 
-- **Alternatives considered:**
+**Alternatives considered:**
 - Do both: keyword rule _and_ let it flow into the classifier as a backstop. Considered, but
   once the keyword rule fires, there is nothing left for the classifier to safely add, since
   the reply is already decided.
@@ -99,7 +99,7 @@
   exactly one of four buckets, each with its own generation prompt and its own escalation
   rule.
 
-- **Alternatives considered:**
+**Alternatives considered:**
 - Two buckets: "answerable" and "not answerable." Rejected, but this makes it too broad. It collapses "this
   is a normal question, just outside our product" (interest rates) with "this is on-topic
   and a human should look at it" (duplicate Netflix charge), and those need opposite
@@ -109,7 +109,8 @@
   with zero ambiguity. Routing those to a human would be needless friction for the large
   majority of ordinary questions.
 
-- **Trade-off I'm accepting:** the routing decision itself is blind to account data. `classify()`
+**Trade-off I'm accepting:** 
+- The routing decision itself is blind to account data. `classify()`
   only ever sees the question text and the six section titles, never `safe_data`, so whether a
   question gets routed to `unclear` depends on how it's phrased, not on what's actually in the
   account. "I was charged twice for Netflix" (cust_002) routes to `unclear` because the wording
@@ -190,6 +191,8 @@
 
 - **Cross-referencing account state with policies:** e.g if a user asks how they can freeze their even if their card is already frozen this question would be answered from the knowledge without checking the actual status of their card. I assumed here that the customer just wants to know a specific piece of information and nothing more.
 
+If a user also asks why their card is not working it would not be mapped to their data to check if their card is forzen or not instead it only goes to the knowledge section.
+
 - **No deterministic guard for an abnormal account state:** `cust_003` has `accountStatus: "restricted"` and `kyc: "pending"`. Whether that question gets `account_data` or `unclear` (escalate) is currently left entirely to the classifier's judgment.
 
 - **No conversation memory across turns.** Each question in `questions.txt` is independent
@@ -203,3 +206,5 @@
   list.
 
 - **Handling requests which may ask for both safe and restricted data in one prompt:** A partial-answer version would need to detect _which part_ is restricted and answer only the rest, which is a much harder guarantee to make safely so it just flags entire request right now as restricted.
+
+- **Handling vague Quesitons:** A partial-answer version would need to detect _which part_ is restricted and answer only the rest, which is a much harder guarantee to make safely so it just flags entire request right now as restricted.
