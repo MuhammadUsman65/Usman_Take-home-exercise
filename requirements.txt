@@ -1,0 +1,4 @@
+langchain-text-splitters
+groq
+python-dotenv
+pytest
