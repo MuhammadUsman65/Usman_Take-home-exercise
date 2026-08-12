@@ -10,18 +10,18 @@ Ensure you have **Python 3.11+** installed on your system.
 
 ## Step 1 Setting up venv (so there is no package conflict)
 
-# On macOS/Linux
+### On macOS/Linux
 python3 -m venv venv
 
-# On Windows
+### On Windows
 python -m venv venv
 
 ## Step 2 activate the virtual environment
 
-# On macOS/Linux
+### On macOS/Linux
 source venv/bin/activate
 
-# On Windows powershell
+### On Windows powershell
 venv\Scripts\activate.ps1
 
 ## Install relevant dependencies
@@ -36,5 +36,5 @@ in the root of the project create data folder and add the knowledge files there 
 3. add LLM_MODEL= openai/gpt-oss-120b
 
 ## Run the Test cases:
-pytest -v (inside the root directory)
-python main.py (to run the code)
+1. pytest -v (inside the root directory)
+2. python main.py (to run the code)
