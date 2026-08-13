@@ -6,7 +6,7 @@ Here is my proposed design for the problem addressing the different concerns:
 
 # 1. Defining Data Ownership
 
-The **original service** that owns a piece of data remains the **source of truth**. The AI service will consume a **governed projection** of that data.
+The **original service** that owns a piece of data remains the **source of truth**. The AI service will consume a **governed view** of that data through explicit contracts.
 
 **e.g** A ledger service owns the balance and Transactions data and the behavioural analytics are owned by Product Analytics Platform.
 
@@ -20,7 +20,7 @@ For this section I have selected a hybrid approach for fetching **live data** an
 
 - This layer wont own any of the records but will handle services like authentication, authorization and field filtering etc.
 - The access layer provides a governed way for our AI service to consume that data.
-- I do understand that this adds a single point of failure in our system so we will focus more on making it highly available by distributing requests (load) using a load balancer to multiple access layers (servers).
+- I do understand that this adds central dependency in our system, so we will focus on keeping the access layer highly available by distributing requests (load) using a load balancer to multiple access layers (servers).
 
 ```
                     ┌─────────────┐
@@ -44,33 +44,34 @@ For this section I have selected a hybrid approach for fetching **live data** an
 Transaction Data
 ```
 
-## Customer Analytics using a data warehouse:
+## Customer Analytics using an event driven data warehouse:
 
-- Will store the historical data so won't need to call a single service many many times (saves computation cost)
+- Will store the historical data so won't need to call a single service many many times (saves computation cost by avoiding repeatedly querying services for analysis).
+- Data will reach the store through an event-driven pipeline
 - Data being stale for a short period of time does not have a major impact here
 
 ```
-┌──────────┐
-│ Services │
-└────┬─────┘
-     │
-     v
-┌──────────────┐
-│ Data Pipeline│
-└──────┬───────┘
-       │
-       v
-┌───────────┐
-│ Warehouse │
-└─────┬─────┘
-      │
-      v
-┌────────────────────────────┐
-│ Analytics / ML / Reporting │
-└────────────────────────────┘
+              Domain Services
+                    │
+                    ▼
+          Event-Driven Data Pipeline
+                    │
+                    ▼
+               ┌──────────┐
+               │ Warehouse│
+               └────┬─────┘
+                    │
+          ┌─────────┴─────────┐
+          │                   │
+          ▼                   ▼
+ Analytics Data        Analytics / ML /
+ Access Layer            Reporting
+          │
+          ▼
+      Support AI
 ```
 
-## What I avoided here and why?
+## What I deliberately avoided here and why?
 
 ### Direct Calls to every owning service from the AI Service
 
@@ -78,17 +79,21 @@ Transaction Data
 
 ### Adding a central customer service
 
-- It can become the owner of data in a way or at least become heavily responsible for business logic around it making it the source of truth in a way.
+- A central customer service can gradually become a new system of record or accumulate domain-specific business logic.
 
-### An event driven architecture
+### An event driven architecture for live data
 
-- It can contain old snapshots of data and can be a major risk where live data is important.
+- For live financial data because it may introduce inconsistencies.
+
+### Using a CDC pipeline for Analytics
+
+- Although CDC can provide reliable change capture, but it reads the raw table, restricted fields and all, and pushes the job of filtering out CNIC/IBAN/PAN downstream into the pipeline instead of stopping it at the source and filtering is owned by the platform team running the connector, not by the service that actually knows which fields are sensitive.
 
 ---
 
 # 3. making Sure unauthorized data is never accessed
 
-- I have gone for multi-layer defense system here since security is a critical component in this
+- I have gone for multi-layer defense system here which will be supported by the built-in authorization of the owning services
 
 ## 3.1 Layer 1: ID Authentication
 
@@ -102,7 +107,7 @@ Transaction Data
 
 - Authorization also applies to individual fields. The access layer exposes only the fields required for the specific AI use case through a defined contract. Sensitive fields such as CNIC and IBAN are excluded, so the AI cannot read or return data it was never given access to.
 
-## 3.4 Layer 4: Restriciting AI from calling arbitrary APIs.
+## 3.4 Layer 4: Restricting AI from calling arbitrary APIs.
 
 - The AI will not have unrestricted access to backend APIs. Instead, it will use a small set of typed tools such as get_card_status or get_recent_transactions. Each tool will be implemented by the application and call the governed data access layer, where customer authorization and field-level access checks are enforced.
 
@@ -119,22 +124,21 @@ Owning service returns the approved data
 ## Maintaining Logs for tracking
 
 - Audit log of every field access (who, which customer, which fields, when)
+- written to a separate access-controlled logging system e.g a separate data base or something like amazon CloudTrail
 
 ---
 
 # 4. What happens if a service is slow or down mid answer?
 
 - We will set a timeout for the calls being made
-- Use tags to label fields in the context of the question. And if any `critical field` is missing for the question we will not generate a partial answer and could ask the user to wait or escalate their query else we could generate a partial answer from the data we have collected
+- Use tags to label fields in the context of the question. And if any `critical field` is missing for the question we will not generate a partial answer and could ask the user to wait or escalate their query else we could generate a partial answer from the data we have collected without inventing facts for whatever's missing.
 - Implement retries here with a cap
 
 ---
 
 # 5. Data Residency
 
-This is something I am unsure about since the data storage is subject to our laws as well.
-
-But what we can do here is try to keep as much as data within our internal boundaries and only forward relevant fields to any external system (LLM) for processing
+I would keep financial customer data within the required residency boundary and avoid sending raw financial or identity data to external systems. Where an external LLM is used, only the minimum required fields would be sent, and only if the provider and deployment model satisfy the compliance requirements (data storage is subject to our laws as well)
 
 ---
 
@@ -162,7 +166,8 @@ AI use case can request it
 - Make our AI service stateless, so it does not depend on data stored inside one particular server. So we can run multiple copies.
 - Implement caching for behavioural data
 - Shared data access layer also prevents every AI use case from building its own service integrations, authorization, and field filtering
-- Upgrading our servers to handle the incoming traffic
+- Horizontally scaling stateless AI and access-layer instances behind load balancers
+- Use connection pooling and bounded downstream concurrency so increased AI traffic does not overwhelm the owning services.
 
 ---
 
